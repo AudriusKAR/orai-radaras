@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lietaus radaras — kur dabar lyja</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  html,body{margin:0;height:100%;font-family:"Segoe UI",system-ui,sans-serif;background:#0f172a}
+  #map{position:absolute;top:0;bottom:0;left:0;right:0}
+  .panel{
+    position:absolute;left:12px;bottom:12px;z-index:1000;
+    background:rgba(15,23,42,.9);color:#e2e8f0;border:1px solid #334155;
+    border-radius:12px;padding:12px 14px;font-size:.9rem;min-width:280px;
+  }
+  .panel h1{font-size:1rem;margin:0 0 8px}
+  .row{display:flex;align-items:center;gap:10px;margin-top:6px}
+  button{background:#273449;color:#e2e8f0;border:1px solid #334155;border-radius:8px;
+    padding:6px 12px;cursor:pointer;font-size:1rem}
+  button:hover{background:#334155}
+  input[type=range]{flex:1}
+  .time{font-variant-numeric:tabular-nums;color:#38bdf8;font-weight:600}
+  .legend{margin-top:8px;font-size:.75rem;color:#94a3b8;line-height:1.5}
+  a{color:#38bdf8}
+  .status{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1000;
+    background:rgba(15,23,42,.9);color:#e2e8f0;border:1px solid #334155;border-radius:8px;
+    padding:6px 14px;font-size:.85rem}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="status" id="status">Kraunami radaro kadrai…</div>
+
+<div class="panel">
+  <h1>🌧️ Lietaus radaras</h1>
+  <div class="row">
+    <button id="play">⏸</button>
+    <input type="range" id="slider" min="0" max="0" value="0">
+  </div>
+  <div class="row"><span>Kadras:</span> <span class="time" id="time">—</span></div>
+  <div class="legend">🔴 Mano vieta &middot; žiedai kas 25 km (iki 100 km)<br>
+    Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
+  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var BOUNDS = [[59.701667, 15.618611],[49.876389, 34.313611]];
+var IMGBASE = "https://new.meteo.lt/meteo_jobs/radaru_informacija/Header_Radar-composite-";
+var PT = [54.6824221, 25.3072029];
+
+var map = L.map('map',{zoomControl:true}).setView([54.9, 24.0], 7);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  {attribution:'© OpenStreetMap, © CARTO', maxZoom:19}).addTo(map);
+
+[25000,50000,75000,100000].forEach(function(r){
+  L.circle(PT,{radius:r,color:'#64748b',weight:1,dashArray:'5',fill:false}).addTo(map);
+});
+L.circleMarker(PT,{radius:7,color:'#fff',weight:2,fillColor:'#ef4444',fillOpacity:1})
+  .addTo(map).bindPopup('Mano vieta');
+
+function pad(n){return (n<10?'0':'')+n;}
+function tsUTC(d){return ''+d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+pad(d.getUTCHours())+pad(d.getUTCMinutes());}
+function tsToLocal(ts){
+  var d=new Date(Date.UTC(+ts.substr(0,4),+ts.substr(4,2)-1,+ts.substr(6,2),+ts.substr(8,2),+ts.substr(10,2)));
+  return pad(d.getHours())+':'+pad(d.getMinutes());
+}
+
+var nowd=new Date(); nowd.setUTCSeconds(0,0);
+nowd.setUTCMinutes(nowd.getUTCMinutes()-(nowd.getUTCMinutes()%5));
+var candidates=[];
+for(var i=24;i>=2;i--){ candidates.push(tsUTC(new Date(nowd.getTime()-i*5*60000))); }
+
+var valid=[];
+var checked=0;
+candidates.forEach(function(ts){
+  var im=new Image();
+  im.onload=function(){ valid.push(ts); done(); };
+  im.onerror=function(){ done(); };
+  im.src=IMGBASE+ts+'.png';
+});
+function done(){ checked++; if(checked===candidates.length) setup(); }
+
+var frames=[], layers={}, idx=0, playing=true, timer=null;
+var slider=document.getElementById('slider');
+var timeEl=document.getElementById('time');
+var playBtn=document.getElementById('play');
+var statusEl=document.getElementById('status');
+
+function setup(){
+  frames=valid.sort();
+  if(!frames.length){ statusEl.textContent='Radaro kadrų gauti nepavyko'; return; }
+  statusEl.style.display='none';
+  slider.max=frames.length-1;
+  frames.forEach(function(ts){
+    layers[ts]=L.imageOverlay(IMGBASE+ts+'.png', BOUNDS, {opacity:0}).addTo(map);
+  });
+  show(frames.length-1);
+  setPlaying(true);
+}
+function show(i){
+  frames.forEach(function(ts,j){ layers[ts].setOpacity(j===i?0.7:0); });
+  idx=i; slider.value=i;
+  timeEl.textContent=tsToLocal(frames[i])+(i===frames.length-1?' (naujausias)':'');
+}
+function step(){ show((idx+1)%frames.length); }
+function setPlaying(p){
+  playing=p; playBtn.textContent=p?'⏸':'▶';
+  if(timer){clearInterval(timer);timer=null;}
+  if(p) timer=setInterval(step,700);
+}
+playBtn.addEventListener('click',function(){ setPlaying(!playing); });
+slider.addEventListener('input',function(){ setPlaying(false); show(+slider.value); });
+</script>
+</body>
+</html>
