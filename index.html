@@ -51,6 +51,7 @@
     <input type="range" id="slider" min="0" max="0" value="0">
   </div>
   <div class="row"><span>Kadras:</span> <span class="time" id="time">—</span></div>
+  <div class="legend">Sukama paskutinė valanda &middot; slankikliu gali grįžti iki 2 val. atgal</div>
 
   <div id="vietaBlokas" class="hidden">
     <div class="sep"></div>
@@ -65,7 +66,7 @@
 
   <div class="legend">🔴 Namai (Polocko 32C) &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)<br>
     Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
-  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v5</b></div>
+  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v6</b></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -292,7 +293,16 @@ function show(i){
   idx=i; slider.value=i;
   timeEl.textContent=tsToLocal(frames[i])+(i===frames.length-1?' (naujausias)':'');
 }
-function step(){ show((idx+1)%frames.length); }
+// Automatinė animacija sukasi TIK per paskutinę valandą (12 kadrų po 5 min).
+// Slankikliu galima rankiniu būdu nusileisti iki 2 val. atgal.
+var KADRU_VALANDOJE = 12;
+function kilpasPradzia(){ return Math.max(0, frames.length - KADRU_VALANDOJE); }
+function step(){
+  var pradzia = kilpasPradzia();
+  var kitas = idx + 1;
+  if(kitas >= frames.length || kitas < pradzia){ kitas = pradzia; }
+  show(kitas);
+}
 function setPlaying(p){
   playing=p; playBtn.textContent=p?'⏸':'▶';
   if(timer){clearInterval(timer);timer=null;}
