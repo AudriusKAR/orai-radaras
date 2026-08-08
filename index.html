@@ -65,7 +65,7 @@
 
   <div class="legend">🔴 Namai (Polocko 32C) &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)<br>
     Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
-  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a></div>
+  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v4</b></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -144,11 +144,17 @@ function braizytiVieta(v){
 // tiek, kad tilptų tolimiausias (100 km) žiedas.
 function centruoti(lat, lon){
   var panelis = document.querySelector('.panel');
+  var aukstis = map.getSize().y;
   var apacia = (panelis ? panelis.offsetHeight : 0) + 24;
-  map.fitBounds(L.latLng(lat, lon).toBounds(200000), {
-    paddingTopLeft:     [12, 12],
-    paddingBottomRight: [12, apacia]
-  });
+  if(apacia > aukstis * 0.6){ apacia = Math.round(aukstis * 0.6); }  // kad žemėlapiui liktų vietos
+  try {
+    map.fitBounds(L.latLng(lat, lon).toBounds(200000), {   // 200 km dėžė = visas 100 km žiedas
+      paddingTopLeft:     [12, 12],
+      paddingBottomRight: [12, apacia]
+    });
+  } catch(e) {
+    map.setView([lat, lon], 7);
+  }
 }
 
 function rodytiBusena(v){
