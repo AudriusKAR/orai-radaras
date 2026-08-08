@@ -65,7 +65,7 @@
 
   <div class="legend">🔴 Namai (Polocko 32C) &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)<br>
     Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
-  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v4</b></div>
+  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v5</b></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -108,8 +108,10 @@ var fiksuotiBtn = document.getElementById('fiksuoti');
 var jungiklisBtn = document.getElementById('jungiklis');
 var jungiklioEil = document.getElementById('jungiklioEil');
 var esamaVieta = null;
+var pirmasVaizdas = true;      // pirmą kartą sutalpinam abu taškus į ekraną
 
 if(raktas){ vietaBlokas.classList.remove('hidden'); gautiVieta(); setInterval(gautiVieta, 60000); }
+else { centruotiVisus(); }
 
 function rpc(vardas, kunas){
   kunas = kunas || {};
@@ -142,19 +144,26 @@ function braizytiVieta(v){
 
 // Sucentruoja tašką matomoje ekrano dalyje VIRŠ apatinio langelio ir priartina
 // tiek, kad tilptų tolimiausias (100 km) žiedas.
-function centruoti(lat, lon){
+function sutalpinti(ribos){
   var panelis = document.querySelector('.panel');
   var aukstis = map.getSize().y;
   var apacia = (panelis ? panelis.offsetHeight : 0) + 24;
   if(apacia > aukstis * 0.6){ apacia = Math.round(aukstis * 0.6); }  // kad žemėlapiui liktų vietos
   try {
-    map.fitBounds(L.latLng(lat, lon).toBounds(200000), {   // 200 km dėžė = visas 100 km žiedas
-      paddingTopLeft:     [12, 12],
-      paddingBottomRight: [12, apacia]
-    });
-  } catch(e) {
-    map.setView([lat, lon], 7);
+    map.fitBounds(ribos, { paddingTopLeft: [12, 12], paddingBottomRight: [12, apacia] });
+  } catch(e) {}
+}
+
+// Vienas taškas su visu 100 km žiedu (200 km dėžė aplink jį)
+function centruoti(lat, lon){ sutalpinti(L.latLng(lat, lon).toBounds(200000)); }
+
+// VISI tikrinami taškai (namai + mano vieta), kad abu žiedai tilptų
+function centruotiVisus(){
+  var ribos = L.latLng(PT[0], PT[1]).toBounds(200000);
+  if(esamaVieta && esamaVieta.aktyvus && esamaVieta.lat != null){
+    ribos.extend(L.latLng(esamaVieta.lat, esamaVieta.lon).toBounds(200000));
   }
+  sutalpinti(ribos);
 }
 
 function rodytiBusena(v){
@@ -185,6 +194,9 @@ function gautiVieta(){
     rodytiBusena(d && d.length ? d[0] : null);
   }).catch(function(e){
     vietaInfo.innerHTML = '<span class="klaida">Nepavyko gauti vietos: ' + e.message + '</span>';
+  }).then(function(){
+    // tik atsivertus puslapį — sutalpinam abu taškus; vėliau nekeičiam, kad netrukdytume naršyti
+    if(pirmasVaizdas){ pirmasVaizdas = false; centruotiVisus(); }
   });
 }
 
