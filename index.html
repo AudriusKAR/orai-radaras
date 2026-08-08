@@ -136,6 +136,17 @@ function braizytiVieta(v){
      .addTo(map).bindPopup('Mano vieta' + (v.adresas ? '<br>' + v.adresas : '')));
 }
 
+// Sucentruoja tašką matomoje ekrano dalyje VIRŠ apatinio langelio ir priartina
+// tiek, kad tilptų tolimiausias (100 km) žiedas.
+function centruoti(lat, lon){
+  var panelis = document.querySelector('.panel');
+  var apacia = (panelis ? panelis.offsetHeight : 0) + 24;
+  map.fitBounds(L.latLng(lat, lon).toBounds(200000), {
+    paddingTopLeft:     [12, 12],
+    paddingBottomRight: [12, apacia]
+  });
+}
+
 function rodytiBusena(v){
   esamaVieta = v;
   braizytiVieta(v);
@@ -189,7 +200,7 @@ fiksuotiBtn.addEventListener('click', function(){
     adresoPaieska(lat,lon).then(function(adr){
       return rpc('vieta_irasyti', {p_lat:lat, p_lon:lon, p_tikslumas_m:acc, p_adresas:adr});
     }).then(function(){
-      map.setView([lat,lon], 9);
+      centruoti(lat,lon);
       gautiVieta();
     }).catch(function(e){
       vietaInfo.innerHTML = '<span class="klaida">Nepavyko įrašyti: ' + e.message + '</span>';
