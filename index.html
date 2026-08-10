@@ -7,18 +7,24 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Lietaus radaras — kur dabar lyja</title>
-<!-- versija 3 (2026-08-08): centravimas virs langelio + 100 km ziedo priartinimas -->
+<!-- versija 10 (2026-08-10): suskleidziamas langelis + namu taskas tik is laisko nuorodos -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   html,body{margin:0;height:100%;font-family:"Segoe UI",system-ui,sans-serif;background:#0f172a}
   #map{position:absolute;top:0;bottom:0;left:0;right:0}
   .panel{
-    position:absolute;left:12px;bottom:12px;z-index:1000;
+    position:absolute;left:12px;right:auto;bottom:12px;z-index:1000;
     background:rgba(15,23,42,.92);color:#e2e8f0;border:1px solid #334155;
-    border-radius:12px;padding:12px 14px;font-size:.9rem;min-width:280px;max-width:min(360px,calc(100vw - 24px));
+    border-radius:12px;padding:10px 12px;font-size:.9rem;
+    width:min(360px,calc(100vw - 24px));box-sizing:border-box;
+    max-height:calc(100vh - 24px);overflow-y:auto;
   }
-  .panel h1{font-size:1rem;margin:0 0 8px}
-  .row{display:flex;align-items:center;gap:10px;margin-top:6px}
+  /* --- antraštės eilutė = suskleidimo mygtukas --- */
+  .head{display:flex;align-items:center;gap:8px;cursor:pointer;-webkit-user-select:none;user-select:none}
+  .head h1{flex:1;font-size:1rem;margin:0}
+  #skleisti{white-space:nowrap}
+
+  .row{display:flex;align-items:center;gap:10px;margin-top:8px}
   button{background:#273449;color:#e2e8f0;border:1px solid #334155;border-radius:8px;
     padding:6px 12px;cursor:pointer;font-size:1rem}
   button:hover{background:#334155}
@@ -26,54 +32,68 @@
   button.primary{background:#2563eb;border-color:#3b82f6;font-size:.95rem;font-weight:600;flex:1}
   button.primary:hover{background:#1d4ed8}
   button.ghost{font-size:.8rem;padding:5px 10px}
-  input[type=range]{flex:1}
-  .time{font-variant-numeric:tabular-nums;color:#38bdf8;font-weight:600}
+  input[type=range]{flex:1;min-width:0}
+  .time{font-variant-numeric:tabular-nums;color:#38bdf8;font-weight:600;min-width:42px;text-align:right}
+  .time.senas{color:#fbbf24}
   .legend{margin-top:8px;font-size:.75rem;color:#94a3b8;line-height:1.5}
   a{color:#38bdf8}
   .status{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1000;
     background:rgba(15,23,42,.9);color:#e2e8f0;border:1px solid #334155;border-radius:8px;
     padding:6px 14px;font-size:.85rem}
-  .sep{border-top:1px solid #334155;margin:10px 0 6px}
-  .vieta{font-size:.8rem;color:#cbd5e1;line-height:1.45;margin-top:6px}
+  .sep{border-top:1px solid #334155;margin:10px 0 0}
+  .vieta{font-size:.8rem;color:#cbd5e1;line-height:1.45;margin-top:8px}
   .vieta b{color:#60a5fa}
   .klaida{color:#fca5a5}
   .hidden{display:none}
+  /* Suskleistas langelis: matosi tik antraštė, slankiklis ir vietos mygtukas */
+  .panel.suskleista .daugiau{display:none}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div class="status" id="status">Kraunami radaro kadrai…</div>
 
-<div class="panel">
-  <h1>🌧️ Lietaus radaras</h1>
+<div class="panel suskleista" id="panel">
+  <div class="head" id="head">
+    <h1>🌧️ Lietaus radaras</h1>
+    <button class="ghost" id="skleisti" type="button" aria-expanded="false">Daugiau ⌄</button>
+  </div>
+
   <div class="row">
-    <button id="play">⏸</button>
+    <button id="play" type="button">⏸</button>
     <input type="range" id="slider" min="0" max="0" value="0">
+    <span class="time" id="time">—</span>
   </div>
-  <div class="row"><span>Kadras:</span> <span class="time" id="time">—</span></div>
-  <div class="legend">Sukamos paskutinės 25 min &middot; slankikliu gali grįžti iki 2 val. atgal</div>
 
-  <div id="vietaBlokas" class="hidden">
-    <div class="sep"></div>
+  <div id="vietaBlokas">
     <div class="row">
-      <button class="primary" id="fiksuoti">📍 Fiksuoti mano vietą</button>
+      <button class="primary" id="fiksuoti" type="button">📍 Rodyti mano vietą</button>
     </div>
-    <div class="vieta" id="vietaInfo">Antrasis taškas nenustatytas.</div>
-    <div class="row" id="jungiklioEil" style="display:none">
-      <button class="ghost" id="jungiklis">🚫 Išjungti antrą tašką</button>
+    <div class="daugiau">
+      <div class="vieta" id="vietaInfo">Antrasis taškas nenustatytas.</div>
+      <div class="row" id="jungiklioEil" style="display:none">
+        <button class="ghost" id="jungiklis" type="button">🚫 Išjungti antrą tašką</button>
+      </div>
     </div>
   </div>
 
-  <div class="legend"><span id="tasku">🔴 Namai (Polocko 32C) &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)</span><br>
-    Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
-  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v9</b></div>
+  <div class="legend klaida hidden" id="namuIspejimas">
+    ⚠️ Namų taškas atsiras vieną kartą atsidarius naujausią nuorodą iš įspėjimo laiško.
+  </div>
+
+  <div class="daugiau">
+    <div class="legend">Sukamos paskutinės 25 min &middot; slankikliu gali grįžti iki 2 val. atgal</div>
+    <div class="sep"></div>
+    <div class="legend"><span id="tasku">🔵 tavo vieta &middot; žiedai kas 25 km (iki 100 km)</span><br>
+      Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
+    <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v10</b></div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 var BOUNDS = [[59.701667, 15.618611],[49.876389, 34.313611]];
 var IMGBASE = "https://new.meteo.lt/meteo_jobs/radaru_informacija/Header_Radar-composite-";
-var PT = [54.6824221, 25.3072029];              // namai — Polocko 32C, Vilnius
 
 var SB_URL = "https://xmhplprqemgsvvrnmtju.supabase.co";
 var SB_KEY = "sb_publishable_j0BUqc9Fl7MTd7XfTirGGQ_N5IWoAS4";
@@ -82,54 +102,83 @@ var map = L.map('map',{zoomControl:true}).setView([54.9, 24.0], 7);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
   {attribution:'© OpenStreetMap, © CARTO', maxZoom:19}).addTo(map);
 
-// ===================== MANO VIETA (GPS) =====================
-// Slaptas raktas ateina laiško nuorodoje (#k=...) ir įsimenamas naršyklėje.
-// ?svecias=1 — priverstinis svečio režimas (raktas ignoruojamas), kad Audrius
-// galėtų pats pasitikrinti, ką mato pašalinis žmogus.
-var raktas = null;
+var LIETUVA = L.latLngBounds([53.85, 20.90],[56.50, 26.90]);
+
+// ===================== SUSKLEIDIMAS =====================
+// Atsivėrus langelis visada suskleistas (matosi antraštė, slankiklis, vietos mygtukas).
+var panel = document.getElementById('panel');
+var skleistiBtn = document.getElementById('skleisti');
+function nustatytiSkleidima(atverta){
+  panel.classList.toggle('suskleista', !atverta);
+  skleistiBtn.textContent = atverta ? 'Mažiau ⌃' : 'Daugiau ⌄';
+  skleistiBtn.setAttribute('aria-expanded', atverta ? 'true' : 'false');
+}
+document.getElementById('head').addEventListener('click', function(){
+  nustatytiSkleidima(panel.classList.contains('suskleista'));
+});
+// Kad slankiklio tempimas ir mygtukų spaudimas nestumdytų žemėlapio po langeliu
+L.DomEvent.disableClickPropagation(panel);
+L.DomEvent.disableScrollPropagation(panel);
+
+// ===================== RAKTAS IR NAMŲ TAŠKAS =====================
+// Slaptas raktas (#k=...) ir namų koordinatės (&n=lat,lon) ateina laiško nuorodoje
+// ir įsimenami naršyklėje. Viešame puslapio kode namų koordinačių NĖRA.
+// ?svecias=1 — priverstinis svečio režimas, kad Audrius pamatytų, ką mato pašalinis.
+var raktas = null, PT = null;
 var svecioTestas = /[#?&]svecias=1\b/.test(location.hash + '&' + location.search);
 (function(){
   if(svecioTestas) return;
-  var m = (location.hash + '&' + location.search).match(/[#?&]k=([A-Za-z0-9]+)/);
-  if(m){
-    raktas = m[1];
-    try{ localStorage.setItem('radaroRaktas', raktas); }catch(e){}
-    history.replaceState(null,'',location.pathname);      // raktas dingsta iš adreso juostos
-  } else {
-    try{ raktas = localStorage.getItem('radaroRaktas'); }catch(e){}
+  var visa = location.hash + '&' + location.search;
+  var k = visa.match(/[#?&]k=([A-Za-z0-9]+)/);
+  var n = visa.match(/[#?&]n=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  try{
+    if(k){ raktas = k[1]; localStorage.setItem('radaroRaktas', raktas); }
+    else { raktas = localStorage.getItem('radaroRaktas'); }
+    if(n){ PT = [parseFloat(n[1]), parseFloat(n[2])]; localStorage.setItem('radaroNamai', n[1] + ',' + n[2]); }
+    else {
+      var s = localStorage.getItem('radaroNamai');
+      if(s){ var d = s.split(','); PT = [parseFloat(d[0]), parseFloat(d[1])]; }
+    }
+  }catch(e){
+    if(k) raktas = k[1];
+    if(n) PT = [parseFloat(n[1]), parseFloat(n[2])];
   }
+  // raktas ir koordinatės dingsta iš adreso juostos — persiųsta nuoroda jų nebeneša
+  if(k || n) history.replaceState(null,'',location.pathname);
 })();
 
 // --- namų taškas su žiedais — tik savininkui (su raktu) ---
-if(raktas){
+if(raktas && PT){
   [25000,50000,75000,100000].forEach(function(r){
     L.circle(PT,{radius:r,color:'#64748b',weight:1,dashArray:'5',fill:false}).addTo(map);
   });
   L.circleMarker(PT,{radius:7,color:'#fff',weight:2,fillColor:'#ef4444',fillOpacity:1})
-    .addTo(map).bindPopup('Namai — Polocko 32C');
-} else {
-  document.getElementById('tasku').innerHTML = '🔵 tavo vieta &middot; žiedai kas 25 km (iki 100 km)';
+    .addTo(map).bindPopup('Namai');
+  document.getElementById('tasku').innerHTML =
+    '🔴 Namai &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)';
+} else if(raktas){
+  document.getElementById('namuIspejimas').classList.remove('hidden');
 }
 
-var vietaSluoksniai = [], vietaBlokas = document.getElementById('vietaBlokas');
+// ===================== MANO VIETA (GPS) =====================
+var vietaSluoksniai = [];
 var vietaInfo = document.getElementById('vietaInfo');
 var fiksuotiBtn = document.getElementById('fiksuoti');
 var jungiklisBtn = document.getElementById('jungiklis');
 var jungiklioEil = document.getElementById('jungiklioEil');
 var esamaVieta = null;
-var pirmasVaizdas = true;      // pirmą kartą sutalpinam abu taškus į ekraną
+var pirmasVaizdas = true;      // pirmą kartą sutalpinam taškus į ekraną
 
 // Be rakto (pvz. persiųsta nuoroda draugui) mygtukas veikia kaip „svečio" režimas:
 // vieta tik nupiešiama žemėlapyje, į Supabase nerašoma ir sekimo nekeičia.
 var MYGTUKO_TEKSTAS = raktas ? '📍 Fiksuoti mano vietą' : '📍 Rodyti mano vietą';
 fiksuotiBtn.textContent = MYGTUKO_TEKSTAS;
-vietaBlokas.classList.remove('hidden');
 
 if(raktas){ gautiVieta(); setInterval(gautiVieta, 60000); }
 else {
   vietaInfo.innerHTML = 'Paspausk — žemėlapyje pažymėsiu tavo vietą su 25/50/75/100 km žiedais.<br>' +
     'Vieta lieka tik šioje naršyklėje, niekur neįrašoma.';
-  sutalpinti(L.latLngBounds([53.85, 20.90],[56.50, 26.90]));   // visa Lietuva, be namų taško
+  centruotiVisus();
 }
 
 function rpc(vardas, kunas){
@@ -164,9 +213,8 @@ function braizytiVieta(v){
 // Sucentruoja tašką matomoje ekrano dalyje VIRŠ apatinio langelio ir priartina
 // tiek, kad tilptų tolimiausias (100 km) žiedas.
 function sutalpinti(ribos){
-  var panelis = document.querySelector('.panel');
   var aukstis = map.getSize().y;
-  var apacia = (panelis ? panelis.offsetHeight : 0) + 24;
+  var apacia = (panel ? panel.offsetHeight : 0) + 24;
   if(apacia > aukstis * 0.6){ apacia = Math.round(aukstis * 0.6); }  // kad žemėlapiui liktų vietos
   try {
     map.fitBounds(ribos, { paddingTopLeft: [12, 12], paddingBottomRight: [12, apacia] });
@@ -176,13 +224,15 @@ function sutalpinti(ribos){
 // Vienas taškas su visu 100 km žiedu (200 km dėžė aplink jį)
 function centruoti(lat, lon){ sutalpinti(L.latLng(lat, lon).toBounds(200000)); }
 
-// VISI tikrinami taškai (namai + mano vieta), kad abu žiedai tilptų
+// VISI tikrinami taškai (namai + mano vieta); jei nė vieno nėra — visa Lietuva
 function centruotiVisus(){
-  var ribos = L.latLng(PT[0], PT[1]).toBounds(200000);
+  var ribos = null;
+  if(raktas && PT){ ribos = L.latLng(PT[0], PT[1]).toBounds(200000); }
   if(esamaVieta && esamaVieta.aktyvus && esamaVieta.lat != null){
-    ribos.extend(L.latLng(esamaVieta.lat, esamaVieta.lon).toBounds(200000));
+    var kita = L.latLng(esamaVieta.lat, esamaVieta.lon).toBounds(200000);
+    ribos = ribos ? ribos.extend(kita) : kita;
   }
-  sutalpinti(ribos);
+  sutalpinti(ribos || LIETUVA);
 }
 
 function rodytiBusena(v){
@@ -214,7 +264,7 @@ function gautiVieta(){
   }).catch(function(e){
     vietaInfo.innerHTML = '<span class="klaida">Nepavyko gauti vietos: ' + e.message + '</span>';
   }).then(function(){
-    // tik atsivertus puslapį — sutalpinam abu taškus; vėliau nekeičiam, kad netrukdytume naršyti
+    // tik atsivertus puslapį — sutalpinam taškus; vėliau nekeičiam, kad netrukdytume naršyti
     if(pirmasVaizdas){ pirmasVaizdas = false; centruotiVisus(); }
   });
 }
@@ -241,10 +291,12 @@ fiksuotiBtn.addEventListener('click', function(){
     if(!raktas){                       // svečio režimas — tik parodom, nieko neįrašom
       braizytiVieta({aktyvus:true, lat:lat, lon:lon});
       centruoti(lat,lon);
-      vietaInfo.innerHTML = '<b>' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '</b><br>' +
-        'Tikslumas ±' + Math.round(acc) + ' m<br>Rodoma tik tavo naršyklėje — įspėjimai apie šią vietą nesiunčiami.';
+      var koord = lat.toFixed(5) + ', ' + lon.toFixed(5);
+      var uodega = '<br>Tikslumas ±' + Math.round(acc) + ' m<br>' +
+                   'Rodoma tik tavo naršyklėje — įspėjimai apie šią vietą nesiunčiami.';
+      vietaInfo.innerHTML = '<b>' + koord + '</b>' + uodega;
       adresoPaieska(lat,lon).then(function(adr){
-        if(adr){ vietaInfo.innerHTML = '<b>' + adr + '</b><br>' + vietaInfo.innerHTML.split('<br>').slice(1).join('<br>'); }
+        if(adr){ vietaInfo.innerHTML = '<b>' + adr + '</b><br>' + koord + uodega; }
       });
       fiksuotiBtn.disabled = false;
       fiksuotiBtn.textContent = MYGTUKO_TEKSTAS;
@@ -268,6 +320,7 @@ fiksuotiBtn.addEventListener('click', function(){
                              'o puslapyje paspausk adreso juostos <b>aA</b> → Website Settings → Location → Allow' :
             err.code === 3 ? 'nepavyko laiku gauti GPS signalo — pabandyk dar kartą lauke' : 'vieta nepasiekiama';
     vietaInfo.innerHTML = '<span class="klaida">Klaida: ' + t + '.</span>';
+    nustatytiSkleidima(true);          // klaidos tekstas matomas ir suskleistame langelyje
     fiksuotiBtn.disabled = false;
     fiksuotiBtn.textContent = MYGTUKO_TEKSTAS;
   }, {enableHighAccuracy:true, timeout:20000, maximumAge:0});
@@ -324,7 +377,10 @@ function setup(){
 function show(i){
   frames.forEach(function(ts,j){ layers[ts].setOpacity(j===i?0.7:0); });
   idx=i; slider.value=i;
-  timeEl.textContent=tsToLocal(frames[i])+(i===frames.length-1?' (naujausias)':'');
+  var naujausias = (i === frames.length-1);
+  timeEl.textContent = tsToLocal(frames[i]);
+  timeEl.classList.toggle('senas', !naujausias);
+  timeEl.title = naujausias ? 'Naujausias kadras' : 'Ankstesnis kadras';
 }
 // Automatinė animacija sukasi TIK per paskutines KILPOS_MIN minutes (kadrai kas 5 min).
 // Slankikliu galima rankiniu būdu nusileisti iki 2 val. atgal.
