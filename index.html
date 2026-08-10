@@ -66,7 +66,7 @@
 
   <div class="legend">🔴 Namai (Polocko 32C) &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)<br>
     Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
-  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v7</b></div>
+  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v8</b></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -111,8 +111,18 @@ var jungiklioEil = document.getElementById('jungiklioEil');
 var esamaVieta = null;
 var pirmasVaizdas = true;      // pirmą kartą sutalpinam abu taškus į ekraną
 
-if(raktas){ vietaBlokas.classList.remove('hidden'); gautiVieta(); setInterval(gautiVieta, 60000); }
-else { centruotiVisus(); }
+// Be rakto (pvz. persiųsta nuoroda draugui) mygtukas veikia kaip „svečio" režimas:
+// vieta tik nupiešiama žemėlapyje, į Supabase nerašoma ir sekimo nekeičia.
+var MYGTUKO_TEKSTAS = raktas ? '📍 Fiksuoti mano vietą' : '📍 Rodyti mano vietą';
+fiksuotiBtn.textContent = MYGTUKO_TEKSTAS;
+vietaBlokas.classList.remove('hidden');
+
+if(raktas){ gautiVieta(); setInterval(gautiVieta, 60000); }
+else {
+  vietaInfo.innerHTML = 'Paspausk — žemėlapyje pažymėsiu tavo vietą su 25/50/75/100 km žiedais.<br>' +
+    'Vieta lieka tik šioje naršyklėje, niekur neįrašoma.';
+  centruotiVisus();
+}
 
 function rpc(vardas, kunas){
   kunas = kunas || {};
@@ -219,6 +229,20 @@ fiksuotiBtn.addEventListener('click', function(){
   fiksuotiBtn.textContent = '📡 Nustatoma vieta…';
   navigator.geolocation.getCurrentPosition(function(pos){
     var lat = pos.coords.latitude, lon = pos.coords.longitude, acc = pos.coords.accuracy;
+
+    if(!raktas){                       // svečio režimas — tik parodom, nieko neįrašom
+      braizytiVieta({aktyvus:true, lat:lat, lon:lon});
+      centruoti(lat,lon);
+      vietaInfo.innerHTML = '<b>' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '</b><br>' +
+        'Tikslumas ±' + Math.round(acc) + ' m<br>Rodoma tik tavo naršyklėje — įspėjimai apie šią vietą nesiunčiami.';
+      adresoPaieska(lat,lon).then(function(adr){
+        if(adr){ vietaInfo.innerHTML = '<b>' + adr + '</b><br>' + vietaInfo.innerHTML.split('<br>').slice(1).join('<br>'); }
+      });
+      fiksuotiBtn.disabled = false;
+      fiksuotiBtn.textContent = MYGTUKO_TEKSTAS;
+      return;
+    }
+
     vietaInfo.textContent = 'Vieta gauta (±' + Math.round(acc) + ' m), įrašoma…';
     adresoPaieska(lat,lon).then(function(adr){
       return rpc('vieta_irasyti', {p_lat:lat, p_lon:lon, p_tikslumas_m:acc, p_adresas:adr});
@@ -229,14 +253,15 @@ fiksuotiBtn.addEventListener('click', function(){
       vietaInfo.innerHTML = '<span class="klaida">Nepavyko įrašyti: ' + e.message + '</span>';
     }).then(function(){
       fiksuotiBtn.disabled = false;
-      fiksuotiBtn.textContent = '📍 Fiksuoti mano vietą';
+      fiksuotiBtn.textContent = MYGTUKO_TEKSTAS;
     });
   }, function(err){
-    var t = err.code === 1 ? 'neleista naudoti vietos (leisk naršyklės nustatymuose)' :
-            err.code === 3 ? 'nepavyko laiku gauti GPS signalo' : 'vieta nepasiekiama';
+    var t = err.code === 1 ? 'neleista naudoti vietos.<br>iPhone: Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using the App, ' +
+                             'o puslapyje paspausk adreso juostos <b>aA</b> → Website Settings → Location → Allow' :
+            err.code === 3 ? 'nepavyko laiku gauti GPS signalo — pabandyk dar kartą lauke' : 'vieta nepasiekiama';
     vietaInfo.innerHTML = '<span class="klaida">Klaida: ' + t + '.</span>';
     fiksuotiBtn.disabled = false;
-    fiksuotiBtn.textContent = '📍 Fiksuoti mano vietą';
+    fiksuotiBtn.textContent = MYGTUKO_TEKSTAS;
   }, {enableHighAccuracy:true, timeout:20000, maximumAge:0});
 });
 
