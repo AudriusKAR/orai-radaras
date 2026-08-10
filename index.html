@@ -64,9 +64,9 @@
     </div>
   </div>
 
-  <div class="legend">🔴 Namai (Polocko 32C) &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)<br>
+  <div class="legend"><span id="tasku">🔴 Namai (Polocko 32C) &middot; 🔵 mano vieta &middot; žiedai kas 25 km (iki 100 km)</span><br>
     Silpna 🟦🟩 → vidutinė 🟨 → smarki 🟧🟥</div>
-  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v8</b></div>
+  <div class="legend">Šaltinis: <a href="https://www.meteo.lt" target="_blank">Lietuvos hidrometeorologijos tarnyba</a> &middot; <b>v9</b></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -82,17 +82,14 @@ var map = L.map('map',{zoomControl:true}).setView([54.9, 24.0], 7);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
   {attribution:'© OpenStreetMap, © CARTO', maxZoom:19}).addTo(map);
 
-// --- namų taškas su žiedais ---
-[25000,50000,75000,100000].forEach(function(r){
-  L.circle(PT,{radius:r,color:'#64748b',weight:1,dashArray:'5',fill:false}).addTo(map);
-});
-L.circleMarker(PT,{radius:7,color:'#fff',weight:2,fillColor:'#ef4444',fillOpacity:1})
-  .addTo(map).bindPopup('Namai — Polocko 32C');
-
 // ===================== MANO VIETA (GPS) =====================
 // Slaptas raktas ateina laiško nuorodoje (#k=...) ir įsimenamas naršyklėje.
+// ?svecias=1 — priverstinis svečio režimas (raktas ignoruojamas), kad Audrius
+// galėtų pats pasitikrinti, ką mato pašalinis žmogus.
 var raktas = null;
+var svecioTestas = /[#?&]svecias=1\b/.test(location.hash + '&' + location.search);
 (function(){
+  if(svecioTestas) return;
   var m = (location.hash + '&' + location.search).match(/[#?&]k=([A-Za-z0-9]+)/);
   if(m){
     raktas = m[1];
@@ -102,6 +99,17 @@ var raktas = null;
     try{ raktas = localStorage.getItem('radaroRaktas'); }catch(e){}
   }
 })();
+
+// --- namų taškas su žiedais — tik savininkui (su raktu) ---
+if(raktas){
+  [25000,50000,75000,100000].forEach(function(r){
+    L.circle(PT,{radius:r,color:'#64748b',weight:1,dashArray:'5',fill:false}).addTo(map);
+  });
+  L.circleMarker(PT,{radius:7,color:'#fff',weight:2,fillColor:'#ef4444',fillOpacity:1})
+    .addTo(map).bindPopup('Namai — Polocko 32C');
+} else {
+  document.getElementById('tasku').innerHTML = '🔵 tavo vieta &middot; žiedai kas 25 km (iki 100 km)';
+}
 
 var vietaSluoksniai = [], vietaBlokas = document.getElementById('vietaBlokas');
 var vietaInfo = document.getElementById('vietaInfo');
@@ -121,7 +129,7 @@ if(raktas){ gautiVieta(); setInterval(gautiVieta, 60000); }
 else {
   vietaInfo.innerHTML = 'Paspausk — žemėlapyje pažymėsiu tavo vietą su 25/50/75/100 km žiedais.<br>' +
     'Vieta lieka tik šioje naršyklėje, niekur neįrašoma.';
-  centruotiVisus();
+  sutalpinti(L.latLngBounds([53.85, 20.90],[56.50, 26.90]));   // visa Lietuva, be namų taško
 }
 
 function rpc(vardas, kunas){
